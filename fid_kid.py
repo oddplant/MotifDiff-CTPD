@@ -6,7 +6,7 @@ import os, glob, json, numpy as np
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 weights = Inception_V3_Weights.DEFAULT
 model = inception_v3(weights=weights).to(device).eval()
-model.fc = torch.nn.Identity()  # -> (N, 2048) avgpool features
+model.fc = torch.nn.Identity()  # -> (N, 2048) avgpool (pool3) features
 
 prep = T.Compose([
     T.Resize(299),
@@ -19,7 +19,7 @@ def feats_from_files(files, batch=64):
     out = []
     for i in range(0, len(files), batch):
         stack = []
-        for f in files[i:i+batch]:
+        for f in files[i:i + batch]:
             try:
                 stack.append(prep(Image.open(f).convert('RGB')))
             except Exception:
@@ -32,7 +32,8 @@ def feats_from_files(files, batch=64):
         out.append(fv.cpu().numpy())
     return np.vstack(out)
 
-def sqrtm_mat(m):
+def sqrtm_psd(m):
+    # Symmetric PSD square root via eigendecomposition (no scipy dependency)
     w, v = np.linalg.eigh(m)
     w = np.clip(w, 0, None)
     return (v * np.sqrt(w)) @ v.T
@@ -42,7 +43,13 @@ def fid(real, synth):
     s_r = np.cov(real, rowvar=False) + 1e-6 * np.eye(real.shape[1])
     s_s = np.cov(synth, rowvar=False) + 1e-6 * np.eye(synth.shape[1])
     diff = mu_r - mu_s
-    covmean = sqrtm_mat(s_r @ s_s)
+    # Robust covmean = sqrtm(S_r @ S_s) via the symmetric identity
+    # sqrtm(A B) = A^{1/2} (A^{-1/2} B A^{-1/2})^{1/2} A^{1/2}
+    s_r_half = sqrtm_psd(s_r)
+    s_r_inv = np.linalg.inv(s_r)
+    s_r_inv_half = sqrtm_psd(s_r_inv)
+    mid = s_r_inv_half @ s_s @ s_r_inv_half
+    covmean = s_r_half @ sqrtm_psd(mid) @ s_r_half
     return float(diff @ diff + np.trace(s_r + s_s - 2 * covmean))
 
 def kid(real, synth, subset=1000, rng=None):
@@ -50,10 +57,17 @@ def kid(real, synth, subset=1000, rng=None):
     r = rng.choice(len(real), min(subset, len(real)), replace=False)
     s = rng.choice(len(synth), min(subset, len(synth)), replace=False)
     x, y = real[r], synth[s]
+    # L2-normalize to the unit sphere (Binkowski et al., 2018)
+    x = x / np.linalg.norm(x, axis=1, keepdims=True)
+    y = y / np.linalg.norm(y, axis=1, keepdims=True)
+    d = x.shape[1]
+    gamma = 1.0 / d
     def k(a, b):
-        return (0.5 + a @ b.T) ** 3
+        return (gamma * (a @ b.T) + 1.0) ** 3
     m, n = len(x), len(y)
-    xx = k(x, x); yy = k(y, y); xy = k(x, y)
+    xx = k(x, x)
+    yy = k(y, y)
+    xy = k(x, y)
     # unbiased MMD^2 (Binkowski et al., 2018)
     kid_val = (xx.sum() - np.trace(xx)) / (m * (m - 1)) \
               + (yy.sum() - np.trace(yy)) / (n * (n - 1)) \
@@ -65,11 +79,13 @@ real_dir = '/LiKun/crop-detection/pattern/data/images'
 synth_tail = '/LiKun/crop-detection/paper6_MotifDiff/synthetic'
 synth_mid = '/LiKun/crop-detection/paper6_MotifDiff/synthetic_mid'
 
-real_files = glob.glob(os.path.join(real_dir, '**', '*.jpg'), recursive=True) + glob.glob(os.path.join(real_dir, '**', '*.png'), recursive=True)
+real_files = glob.glob(os.path.join(real_dir, '**', '*.jpg'), recursive=True) \
+             + glob.glob(os.path.join(real_dir, '**', '*.png'), recursive=True)
 tail_files = sorted(glob.glob(os.path.join(synth_tail, '**', '*.png'), recursive=True))
 mid_files = sorted(glob.glob(os.path.join(synth_mid, '**', '*.png'), recursive=True))
 all_synth = tail_files + mid_files
-print('counts', dict(real=len(real_files), tail=len(tail_files), mid=len(mid_files), all=len(all_synth)), flush=True)
+print('counts', dict(real=len(real_files), tail=len(tail_files),
+                     mid=len(mid_files), all=len(all_synth)), flush=True)
 
 R = feats_from_files(real_files)
 Tl = feats_from_files(tail_files)
