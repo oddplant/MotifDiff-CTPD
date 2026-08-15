@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MotifDiff · 论文5(生成式方向) 真实实验脚本
+MotifDiff · 论文6(生成式·MotifDiff) 真实实验脚本
 ==========================================
 在 CTPD 上对极端长尾尾部类做「扩散生成式数据补偿」：
   1) 用 Stable Diffusion 1.5 为 4 个尾部类(工字/古贝/太阳/盘长)生成带 bbox 的合成样本
@@ -19,8 +19,10 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+import torch
+torch.backends.cudnn.enabled = False  # global A800 cuDNN fix
 
-ROOT = Path("/LiKun/crop-detection/pattern")
+ROOT = Path("/LiKun/crop-detection/paper6_MotifDiff")
 REAL_DATA = ROOT / "data"
 SYN = ROOT / "synthetic"
 SYN_IMG = SYN / "images"
@@ -66,9 +68,10 @@ def clip_score(pipe_clip, img, text):
 def generate(args):
     from diffusers import StableDiffusionXLPipeline
     import torch
+    torch.backends.cudnn.enabled = False  # fix cuDNN init (A800 env)
     print("[GEN] loading SDXL base (local safetensors) ...")
     from modelscope.hub.snapshot_download import snapshot_download
-    repo = "/LiKun/crop-detection/pattern/sdxl_ms"
+    repo = str(ROOT/"sdxl_ms")
     print("[GEN] snapshot_download SDXL from ModelScope (ignore fp16 + single-ckpt) ...")
     snapshot_download("AI-ModelScope/stable-diffusion-xl-base-1.0", local_dir=repo,
                       ignore_file_pattern=["*fp16*", "sd_xl_base_1.0.safetensors"])
@@ -96,7 +99,7 @@ def generate(args):
             # 固定尺寸，便于训练
             gen = gen.resize((512,512))
             bb = foreground_bbox(gen)
-            if bb[2] < 0.15 or bb[3] < 0.15:   # 前景太小，丢弃
+            if bb[2] < 0.05 or bb[3] < 0.05:   # 前景太小，丢弃
                 continue
             fn = f"{name}_{made:04d}.png"
             gen.save(out_imgs / fn)
@@ -116,14 +119,14 @@ def build_combined_yaml(use_syn=True):
             d = SYN_IMG/name
             for f in sorted(d.glob("*.png")):
                 lines.append(str(f))
-    comb = REAL_DATA/"images/train_motifdiff.txt"
+    comb = ROOT/"train_motifdiff.txt"
     with open(comb,"w",encoding="utf-8") as f:
         f.write("\n".join(lines)+"\n")
-    yaml_p = REAL_DATA/"pattern_motifdiff.yaml"
+    yaml_p = ROOT/"pattern_motifdiff.yaml"
     names = parse_names()
     with open(yaml_p,"w",encoding="utf-8") as f:
         f.write(f"path: {REAL_DATA}\n")
-        f.write(f"train: images/train_motifdiff.txt\n")
+        f.write(f"train: {comb}\n")
         f.write(f"val: images/val.txt\n")
         f.write(f"test: images/test.txt\n")
         f.write(f"nc: 17\nnames:\n")
@@ -178,7 +181,7 @@ def main():
     if args.stage in ("yaml","all"):
         yaml_p, ntrain = build_combined_yaml(use_syn=True)
     else:
-        yaml_p = REAL_DATA/"pattern_motifdiff.yaml"
+        yaml_p = ROOT/"pattern_motifdiff.yaml"
 
     if args.stage in ("train","all"):
         from ultralytics import YOLO
