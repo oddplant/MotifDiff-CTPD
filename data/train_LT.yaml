@@ -1,0 +1,23 @@
+names:
+- bajixiangwen
+- baoxianghuawen
+- fuziwen
+- gongziwen
+- gubeiwen
+- guwen
+- hewen
+- huwen
+- jiaoyewen
+- lianhuawen
+- panchangwen
+- shouziwen
+- taiyangwen
+- wanziwen
+- xiziwen
+- yuanyangwen
+- yuwen
+nc: 17
+path: /LiKun/crop-detection/pattern/data
+test: images/test.txt
+train: /LiKun/crop-detection/pattern/data/images/balanced_train.txt
+val: images/val.txt
