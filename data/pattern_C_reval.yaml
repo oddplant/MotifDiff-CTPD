@@ -1,0 +1,23 @@
+path: /LiKun/crop-detection/paper6_MotifDiff/data
+train: images/train_C_reval.txt
+val: images/val.txt
+test: images/test.txt
+nc: 17
+names:
+  - bajixiangwen
+  - baoxianghuawen
+  - fuziwen
+  - gongziwen
+  - gubeiwen
+  - guwen
+  - hewen
+  - huwen
+  - jiaoyewen
+  - lianhuawen
+  - panchangwen
+  - shouziwen
+  - taiyangwen
+  - wanziwen
+  - xiziwen
+  - yuanyangwen
+  - yuwen
