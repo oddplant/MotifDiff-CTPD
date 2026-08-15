@@ -1,0 +1,23 @@
+path: /LiKun/crop-detection/pattern/data
+train: images/train.txt
+val: images/val.txt
+test: images/test.txt
+nc: 17
+names:
+- eight auspicious symbols
+- rosette flower
+- Chinese character fu
+- silver ingot motif
+- shell coin pattern
+- drum pattern
+- crane
+- tiger
+- banana leaf
+- lotus flower
+- endless knot
+- Chinese character shou
+- sunburst
+- swastika
+- Chinese character xi
+- mandarin duck
+- fish
